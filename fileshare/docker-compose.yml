@@ -1,7 +1,7 @@
 artifactory:
   image: nginx:1.12.2-alpine
   volumes:
-    - /Users/yyovkov-c/Projects/FileShare:/usr/share/nginx/html:ro
+    - /Users/yyovkov-c/Projects/FileShare/webserver:/usr/share/nginx/html:ro
   ports:
     - 8080:80
 
