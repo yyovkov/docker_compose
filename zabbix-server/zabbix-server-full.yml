@@ -1,0 +1,172 @@
+version: '2'
+services:
+  zabbix-server:
+    image: ${IMAGE_ZABBIX_SERVER}
+    ports:
+      - "10051:10051"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro 
+      - ${VOLUME_DIR}usr/lib/zabbix/alertscripts:/usr/lib/zabbix/alertscripts:ro
+      - ${VOLUME_DIR}usr/lib/zabbix/externalscripts:/usr/lib/zabbix/externalscripts:ro
+      - ${VOLUME_DIR}var/lib/zabbix/modules:/var/lib/zabbix/modules:ro
+      - ${VOLUME_DIR}var/lib/zabbix/enc:/var/lib/zabbix/enc:ro
+      - ${VOLUME_DIR}var/lib/zabbix/ssh_keys:/var/lib/zabbix/ssh_keys:ro
+      - ${VOLUME_DIR}var/lib/zabbix/mibs:/var/lib/zabbix/mibs:ro
+    volumes_from:
+      - zabbix-snmptraps:ro
+    links:
+      - postgres-server:postgres-server
+      - zabbix-java-gateway:zabbix-java-gateway
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+      mem_limit: 512m
+    env_file:
+      - ./env_db_pgsql
+      - ./env_srv
+    user: root
+    networks:
+      zbx_net:
+        aliases:
+          - zabbix-server
+          - zabbix-master
+    labels:
+      com.zabbix.description: "Zabbix server with PostgreSQL database support"
+      com.zabbix.component: "zabbix-server"
+      com.zabbix.dbtype: "pgsql"
+      com.zabbix.os: "alpine"
+
+  zabbix-web:
+    image: ${IMAGE_ZABBIX_WEB}
+    ports:
+      - "80:80"
+      - "443:443"
+    links:
+      - postgres-server:postgres-server
+      - zabbix-server:zabbix-server
+    mem_limit: 512m
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ${VOLUME_DIR}etc/ssl/nginx:/etc/ssl/nginx:ro
+    env_file:
+      - ./env_db_pgsql
+      - ./env_web
+    user: root
+    networks:
+      zbx_net:
+        aliases:
+          - zabbix-web
+    labels:
+      com.zabbix.description: "Zabbix frontend on Nginx web-server with PostgreSQL database support"
+      com.zabbix.company: "Zabbix SIA"
+      com.zabbix.component: "zabbix-frontend"
+      com.zabbix.webserver: "nginx"
+      com.zabbix.dbtype: "pgsql"
+      com.zabbix.os: "alpine"
+
+  zabbix-proxy:
+    image: ${IMAGE_ZABBIX_PROXY_SQLITE3}
+    ports:
+      - "10061:10051"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro 
+      - ${VOLUME_DIR}usr/lib/zabbix/externalscripts:/usr/lib/zabbix/externalscripts:ro
+      - ${VOLUME_DIR}var/lib/zabbix/modules:/var/lib/zabbix/modules:ro
+      - ${VOLUME_DIR}var/lib/zabbix/enc:/var/lib/zabbix/enc:ro
+      - ${VOLUME_DIR}var/lib/zabbix/ssh_keys:/var/lib/zabbix/ssh_keys:ro
+      - ${VOLUME_DIR}var/lib/zabbix/mibs:/var/lib/zabbix/mibs:ro
+    volumes_from:
+      - zabbix-snmptraps:ro
+    links:
+    - zabbix-server:zabbix-server
+    - zabbix-java-gateway:zabbix-java-gateway
+    ulimits:
+      nproc: 65535
+      nofile:
+          soft: 20000
+          hard: 40000
+      mem_limit: 512m
+    env_file:
+      - ./env_proxy
+    user: root
+    networks:
+      zbx_net:
+        aliases:
+          - zabbix-proxy
+          - zabbix-proxy-alpine
+    labels:
+      com.zabbix.description: "Zabbix proxy with SQLite3 database support"
+      com.zabbix.company: "Zabbix SIA"
+      com.zabbix.component: "zabbix-proxy"
+      com.zabbix.dbtype: "sqlite3"
+      com.zabbix.os: "alpine"
+
+  zabbix-java-gateway:
+    image: ${IMAGE_ZABBIX_JAVA_GATEWAY}
+    ports:
+      - "10052:10052"
+    env_file:
+      - ./env_java
+    user: root
+    networks:
+      zbx_net:
+        aliases:
+          - zabbix-java-gateway
+          - zabbix-java-gateway-alpine
+    labels:
+      com.zabbix.description: "Zabbix Java Gateway"
+      com.zabbix.company: "Zabbix SIA"
+      com.zabbix.component: "java-gateway"
+      com.zabbix.os: "alpine"
+
+  zabbix-snmptraps:
+    image: ${IMAGE_ZABBIX_SNMTRAPS}
+    ports:
+      - "162:162/udp"
+    volumes:
+      - ${VOLUME_DIR}var/lib/zabbix/snmptraps:/var/lib/zabbix/snmptraps:rw
+    user: root
+    networks:
+      zbx_net:
+        aliases:
+          - zabbix-snmptraps
+    labels:
+      com.zabbix.description: "Zabbix snmptraps"
+      com.zabbix.company: "Zabbix SIA"
+      com.zabbix.component: "snmptraps"
+      com.zabbix.os: "ubuntu"
+
+  postgres-server:
+    image: ${IMAGE_POSTGRESQL}
+    volumes_from:
+      - db_data_pgsql
+    volume_driver: local
+    env_file:
+      - ./env_db_pgsql
+    user: root
+    networks:
+      zbx_net:
+        aliases:
+        - postgres-server
+        - postgres
+
+  db_data_pgsql:
+    image: ${IMAGE_VOLUMES}
+    volumes:
+      - ${VOLUME_DIR}var/lib/postgresql/data:/var/lib/postgresql/data:rw
+
+networks:
+  zbx_net:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+    ipam:
+      driver: default
+      config:
+      - subnet: 172.16.238.0/24
+        gateway: 172.16.238.1
